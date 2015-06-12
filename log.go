@@ -3,6 +3,7 @@ package logging
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -58,16 +59,34 @@ func (l Level) includes(other Level) bool {
 	}
 }
 
+func (l Level) asSentryLevel() raven.Severity {
+	switch l {
+	case DebugLvl:
+		return raven.DEBUG
+	case InfoLvl:
+		return raven.INFO
+	case WarnLvl:
+		return raven.WARNING
+	case ErrorLvl:
+		return raven.ERROR
+	default:
+		return raven.ERROR
+	}
+}
+
 // Logger is an instance of a log handler, used to write files to the designated output
 // if they meet the specified Level. It is concurrency-safe. Each Logger should have its
 // Close method called when you're done with it.
 type Logger struct {
-	level     Level
-	out       io.Writer
-	sentry    *raven.Client
-	calldepth int
-	buf       []byte
-	lock      *sync.Mutex
+	level           Level
+	out             io.Writer
+	sentry          *raven.Client
+	calldepth       int
+	buf             []byte
+	lock            *sync.Mutex
+	tags            map[string]string
+	meta            []raven.Interface
+	packagePrefixes []string
 }
 
 // LogToFile creates a new Logger that writes to a file specified by path. If the file doesn't exist, it
@@ -110,7 +129,47 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 		out:    out,
 		sentry: sentryClient,
 		lock:   new(sync.Mutex),
+		tags:   map[string]string{},
 	}, err
+}
+
+func (l Logger) makeCopy() Logger {
+	newLogger := l
+	newLogger.buf = nil
+	newLogger.lock = new(sync.Mutex)
+	newLogger.tags = map[string]string{}
+	newLogger.meta = nil
+	if l.meta != nil {
+		newLogger.meta = make([]raven.Interface, len(l.meta))
+		for pos, i := range l.meta {
+			newLogger.meta[pos] = i
+		}
+	}
+	for k, v := range l.tags {
+		newLogger.tags[k] = v
+	}
+	return newLogger
+}
+
+// AddTags copies the Logger, adds the specified Sentry tags to the Logger, and returns the
+// modified copy. It is meant to be used to add tags to a specific call on the logger that
+// are unique to that log message. The tags are unused if Sentry is not configured on the Logger.
+func (l Logger) AddTags(tags map[string]string) Logger {
+	newLogger := l.makeCopy()
+	for k, v := range tags {
+		newLogger.tags[k] = v
+	}
+	return newLogger
+}
+
+// AddMeta copies the Logger, adds the specified Sentry metadata (expressed as the Interface type
+// from the raven package) to the Logger, and returns the modified copy. It is meant to be used to
+// add extra information to a Sentry message that it doesn't make sense to pass as an argument to the
+// Warnf/Errorf call. The data is unused if Sentry is not configured on the logger.
+func (l Logger) AddMeta(meta ...raven.Interface) Logger {
+	newLogger := l.makeCopy()
+	newLogger.meta = append(newLogger.meta, meta...)
+	return newLogger
 }
 
 // Close signifies that a Logger will no longer be used, and the resources allocated to it can be freed.
@@ -167,6 +226,16 @@ func (l *Logger) SetSentry(dsn string, tags map[string]string) error {
 	}
 	l.sentry = sentryClient
 	return nil
+}
+
+// SetPackagePrefixes sets the package prefixes that will be used to determine
+// if a package should be considered "in app" in sentry. Stacktraces will use
+// this information to flag lines of stacktraces that are from the application,
+// as opposed to being from a third party library or from the standard library.
+func (l *Logger) SetPackagePrefixes(prefixes []string) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.packagePrefixes = prefixes
 }
 
 // Debugf writes a log entry with the Level of DebugLvl, interpolating the format
@@ -243,6 +312,7 @@ func (l Logger) Warnf(format string, msg ...interface{}) {
 		return
 	}
 	l.logf(format, msg...)
+	l.toSentry(format, msg, WarnLvl)
 }
 
 // Warn writes a log entry with the Level of WarnLvl, joining each argument passed
@@ -260,6 +330,7 @@ func (l Logger) Warn(msg ...interface{}) {
 		return
 	}
 	l.log(msg...)
+	l.toSentry(fmt.Sprint(msg...), []interface{}{}, WarnLvl)
 }
 
 // Errorf writes a log entry with the Level of ErrorLvl, interpolating the format
@@ -278,6 +349,7 @@ func (l Logger) Errorf(format string, msg ...interface{}) {
 		return
 	}
 	l.logf(format, msg...)
+	l.toSentry(format, msg, ErrorLvl)
 }
 
 // Error writes a log entry with the Level of ErrorLvl, joining each argument passed
@@ -295,6 +367,7 @@ func (l Logger) Error(msg ...interface{}) {
 		return
 	}
 	l.log(msg...)
+	l.toSentry(fmt.Sprint(msg...), []interface{}{}, ErrorLvl)
 }
 
 func (l Logger) log(msg ...interface{}) {
@@ -379,4 +452,41 @@ func (l *Logger) output(calldepth int, s string) error {
 	}
 	_, err := l.out.Write(l.buf)
 	return err
+}
+
+// Send output to Sentry
+func (l *Logger) toSentry(format string, args []interface{}, lvl Level) {
+	if l.sentry == nil {
+		return
+	}
+	msg := raven.Message{
+		Message: format,
+		Params:  args,
+	}
+	stack := raven.NewStacktrace(l.calldepth+1, -1, l.packagePrefixes)
+	interfaces := []raven.Interface{&msg, stack}
+	for _, arg := range args {
+		if i, ok := l.asSentryInterface(arg); ok {
+			interfaces = append(interfaces, i)
+		}
+	}
+	if l.meta != nil && len(l.meta) > 0 {
+		interfaces = append(interfaces, l.meta...)
+	}
+	packet := raven.NewPacket(format, interfaces...)
+	packet.Level = lvl.asSentryLevel()
+	l.sentry.Capture(packet, l.tags)
+}
+
+func (l Logger) asSentryInterface(arg interface{}) (raven.Interface, bool) {
+	switch arg.(type) {
+	case error:
+		stack := raven.NewStacktrace(l.calldepth+2, -1, l.packagePrefixes)
+		exception := raven.NewException(arg.(error), stack)
+		return exception, true
+	case *http.Request:
+		req := raven.NewHttp(arg.(*http.Request))
+		return req, true
+	}
+	return nil, false
 }
