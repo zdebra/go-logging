@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,6 +85,7 @@ type Logger struct {
 	calldepth       int
 	buf             []byte
 	lock            *sync.Mutex
+	flock           *sync.Mutex
 	tags            map[string]string
 	meta            []raven.Interface
 	packagePrefixes []string
@@ -122,13 +124,21 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 	var sentryClient *raven.Client
 	var err error
 	if sentry != "" {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		httpClient := &http.Client{Transport: tr}
 		sentryClient, err = raven.NewClient(sentry, sentryTags)
+		if sentryClient != nil {
+			sentryClient.Transport = &raven.HTTPTransport{Http: *httpClient}
+		}
 	}
 	return Logger{
 		level:  level,
 		out:    out,
 		sentry: sentryClient,
 		lock:   new(sync.Mutex),
+		flock:  new(sync.Mutex),
 		tags:   map[string]string{},
 	}, err
 }
@@ -238,6 +248,18 @@ func (l *Logger) SetPackagePrefixes(prefixes []string) {
 	l.packagePrefixes = prefixes
 }
 
+// SetRelease sets the release of the application (usually a git SHA1) that
+// recorded the log. This is only used to tag the logs sent to Sentry, so we
+// know which releases produced the errors.
+func (l *Logger) SetRelease(release string) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	if l.sentry == nil {
+		return
+	}
+	l.sentry.SetRelease(release)
+}
+
 // Debugf writes a log entry with the Level of DebugLvl, interpolating the format
 // string with the arguments passed. See fmt.Sprintf for information on variable
 // placeholders in the format string.
@@ -250,7 +272,7 @@ func (l Logger) Debugf(format string, msg ...interface{}) {
 	if !l.level.includes(DebugLvl) {
 		return
 	}
-	l.logf(format, msg...)
+	l.logf(DebugLvl, format, msg...)
 }
 
 // Debug writes a log entry with the Level of DebugLvl, joining each argument passed
@@ -264,7 +286,7 @@ func (l Logger) Debug(msg ...interface{}) {
 	if !l.level.includes(DebugLvl) {
 		return
 	}
-	l.log(msg...)
+	l.log(DebugLvl, msg...)
 }
 
 // Infof writes a log entry with the Level of InfoLvl, interpolating the format
@@ -279,7 +301,7 @@ func (l Logger) Infof(format string, msg ...interface{}) {
 	if !l.level.includes(InfoLvl) {
 		return
 	}
-	l.logf(format, msg...)
+	l.logf(InfoLvl, format, msg...)
 }
 
 // Info writes a log entry with the Level of InfoLvl, joining each argument passed
@@ -293,7 +315,7 @@ func (l Logger) Info(msg ...interface{}) {
 	if !l.level.includes(InfoLvl) {
 		return
 	}
-	l.log(msg...)
+	l.log(InfoLvl, msg...)
 }
 
 // Warnf writes a log entry with the Level of WarnLvl, interpolating the format
@@ -311,7 +333,7 @@ func (l Logger) Warnf(format string, msg ...interface{}) {
 	if !l.level.includes(WarnLvl) {
 		return
 	}
-	l.logf(format, msg...)
+	l.logf(WarnLvl, format, msg...)
 	l.toSentry(format, msg, WarnLvl)
 }
 
@@ -329,8 +351,8 @@ func (l Logger) Warn(msg ...interface{}) {
 	if !l.level.includes(WarnLvl) {
 		return
 	}
-	l.log(msg...)
-	l.toSentry(fmt.Sprint(msg...), []interface{}{}, WarnLvl)
+	l.log(WarnLvl, msg...)
+	l.toSentry(fmt.Sprintln(msg...), []interface{}{}, WarnLvl)
 }
 
 // Errorf writes a log entry with the Level of ErrorLvl, interpolating the format
@@ -348,7 +370,7 @@ func (l Logger) Errorf(format string, msg ...interface{}) {
 	if !l.level.includes(ErrorLvl) {
 		return
 	}
-	l.logf(format, msg...)
+	l.logf(ErrorLvl, format, msg...)
 	l.toSentry(format, msg, ErrorLvl)
 }
 
@@ -366,19 +388,19 @@ func (l Logger) Error(msg ...interface{}) {
 	if !l.level.includes(ErrorLvl) {
 		return
 	}
-	l.log(msg...)
-	l.toSentry(fmt.Sprint(msg...), []interface{}{}, ErrorLvl)
+	l.log(ErrorLvl, msg...)
+	l.toSentry(fmt.Sprintln(msg...), []interface{}{}, ErrorLvl)
 }
 
-func (l Logger) log(msg ...interface{}) {
-	err := l.output(l.calldepth+2, fmt.Sprint(msg...))
+func (l Logger) log(lvl Level, msg ...interface{}) {
+	err := l.output(l.calldepth+3, fmt.Sprintln(msg...), lvl)
 	if err != nil {
 		os.Stderr.Write([]byte(time.Now().String() + " " + err.Error()))
 	}
 }
 
-func (l Logger) logf(format string, msg ...interface{}) {
-	err := l.output(l.calldepth+2, fmt.Sprintf(format, msg...))
+func (l Logger) logf(lvl Level, format string, msg ...interface{}) {
+	err := l.output(l.calldepth+3, fmt.Sprintf(format, msg...), lvl)
 	if err != nil {
 		os.Stderr.Write([]byte(time.Now().String() + " " + err.Error()))
 	}
@@ -435,7 +457,7 @@ func (l *Logger) formatHeader(buf *[]byte, now time.Time, file string, line int,
 // Actually write to l.out after gathering caller information
 //
 // Heavily modified version of https://github.com/golang/go/blob/883bc6ed0ea815293fe6309d66f967ea60630e87/src/log/log.go#L130
-func (l *Logger) output(calldepth int, s string) error {
+func (l *Logger) output(calldepth int, s string, lvl Level) error {
 	now := time.Now()
 	l.lock.Unlock() // release lock while grabbing caller info - it's expensive
 	_, file, line, ok := runtime.Caller(calldepth)
@@ -445,11 +467,13 @@ func (l *Logger) output(calldepth int, s string) error {
 	}
 	l.lock.Lock()
 	l.buf = l.buf[:0]
-	l.formatHeader(&l.buf, now, file, line, l.level)
+	l.formatHeader(&l.buf, now, file, line, lvl)
 	l.buf = append(l.buf, s...)
 	if len(s) > 0 && s[len(s)-1] != '\n' {
 		l.buf = append(l.buf, '\n')
 	}
+	l.flock.Lock()
+	defer l.flock.Unlock()
 	_, err := l.out.Write(l.buf)
 	return err
 }
@@ -463,7 +487,7 @@ func (l *Logger) toSentry(format string, args []interface{}, lvl Level) {
 		Message: format,
 		Params:  args,
 	}
-	stack := raven.NewStacktrace(l.calldepth+1, -1, l.packagePrefixes)
+	stack := raven.NewStacktrace(l.calldepth+2, 2, l.packagePrefixes)
 	interfaces := []raven.Interface{&msg, stack}
 	for _, arg := range args {
 		if i, ok := l.asSentryInterface(arg); ok {
@@ -473,15 +497,19 @@ func (l *Logger) toSentry(format string, args []interface{}, lvl Level) {
 	if l.meta != nil && len(l.meta) > 0 {
 		interfaces = append(interfaces, l.meta...)
 	}
-	packet := raven.NewPacket(format, interfaces...)
+	packet := raven.NewPacket(fmt.Sprintf(format, args...), interfaces...)
 	packet.Level = lvl.asSentryLevel()
-	l.sentry.Capture(packet, l.tags)
+	_, ch := l.sentry.Capture(packet, l.tags)
+	err := <-ch
+	if err != nil {
+		l.output(1, err.Error(), ErrorLvl)
+	}
 }
 
 func (l Logger) asSentryInterface(arg interface{}) (raven.Interface, bool) {
 	switch arg.(type) {
 	case error:
-		stack := raven.NewStacktrace(l.calldepth+2, -1, l.packagePrefixes)
+		stack := raven.NewStacktrace(l.calldepth+3, 2, l.packagePrefixes)
 		exception := raven.NewException(arg.(error), stack)
 		return exception, true
 	case *http.Request:
