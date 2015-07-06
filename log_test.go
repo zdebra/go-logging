@@ -94,7 +94,7 @@ func TestItoa(t *testing.T) {
 		1000000: "1000000",
 	}
 	for i, a := range testInts {
-		b := make([]byte, 0)
+		var b []byte
 		var wid int
 		switch {
 		case i < 10:
@@ -135,7 +135,7 @@ func TestFormatHeader(t *testing.T) {
 		},
 	}
 	for out, in := range headers {
-		buf := make([]byte, 0)
+		var buf []byte
 		formatHeader(&buf, in.now, in.file, in.line, in.level)
 		if string(buf) != out {
 			t.Errorf("Expected output to be '%s', got '%s' from %+v\n", out, string(buf), in)
@@ -147,7 +147,7 @@ func TestOutput(t *testing.T) {
 	var buf bytes.Buffer
 	log, err := New(DebugLvl, &buf, "", nil)
 	if err != nil {
-		t.Fatal("Unexpected error: %+v\n", err)
+		t.Fatalf("Unexpected error: %+v\n", err)
 	}
 	err = log.output(0, "My test output", InfoLvl)
 	if err != nil {

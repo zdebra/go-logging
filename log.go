@@ -258,7 +258,7 @@ func (l Logger) Debugf(format string, msg ...interface{}) {
 	if !l.level.includes(DebugLvl) {
 		return
 	}
-	l.logf(DebugLvl, format, msg...)
+	l.logf(format, DebugLvl, msg...)
 }
 
 // Debug writes a log entry with the Level of DebugLvl, joining each argument passed
@@ -283,7 +283,7 @@ func (l Logger) Infof(format string, msg ...interface{}) {
 	if !l.level.includes(InfoLvl) {
 		return
 	}
-	l.logf(InfoLvl, format, msg...)
+	l.logf(format, InfoLvl, msg...)
 }
 
 // Info writes a log entry with the Level of InfoLvl, joining each argument passed
@@ -311,7 +311,7 @@ func (l Logger) Warnf(format string, msg ...interface{}) {
 	if !l.level.includes(WarnLvl) {
 		return
 	}
-	l.logf(WarnLvl, format, msg...)
+	l.logf(format, WarnLvl, msg...)
 	l.toSentry(format, msg, WarnLvl)
 }
 
@@ -344,7 +344,7 @@ func (l Logger) Errorf(format string, msg ...interface{}) {
 	if !l.level.includes(ErrorLvl) {
 		return
 	}
-	l.logf(ErrorLvl, format, msg...)
+	l.logf(format, ErrorLvl, msg...)
 	l.toSentry(format, msg, ErrorLvl)
 }
 
@@ -371,7 +371,7 @@ func (l Logger) log(lvl Level, msg ...interface{}) {
 	}
 }
 
-func (l Logger) logf(lvl Level, format string, msg ...interface{}) {
+func (l Logger) logf(format string, lvl Level, msg ...interface{}) {
 	err := l.output(l.calldepth+3, fmt.Sprintf(format, msg...), lvl)
 	if err != nil {
 		os.Stderr.Write([]byte(time.Now().String() + " " + err.Error()))
