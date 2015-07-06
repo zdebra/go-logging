@@ -84,7 +84,6 @@ type Logger struct {
 	sentry          *raven.Client
 	calldepth       int
 	buf             []byte
-	lock            *sync.Mutex
 	flock           *sync.Mutex
 	tags            map[string]string
 	meta            []raven.Interface
@@ -137,7 +136,6 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 		level:  level,
 		out:    out,
 		sentry: sentryClient,
-		lock:   new(sync.Mutex),
 		flock:  new(sync.Mutex),
 		tags:   map[string]string{},
 	}, err
@@ -146,7 +144,6 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 func (l Logger) makeCopy() Logger {
 	newLogger := l
 	newLogger.buf = nil
-	newLogger.lock = new(sync.Mutex)
 	newLogger.tags = map[string]string{}
 	newLogger.meta = nil
 	if l.meta != nil {
@@ -194,78 +191,67 @@ func (l Logger) Close() {
 
 // GetLevel returns the Level assigned to the Logger.
 func (l Logger) GetLevel() Level {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	return l.level
 }
 
 // SetLevel updates the Level assigned to the Logger.
-func (l *Logger) SetLevel(lvl Level) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetLevel(lvl Level) Logger {
 	l.level = lvl
+	return l
 }
 
 // SetOutput redirects the logs from the Logger to a new destination.
-func (l *Logger) SetOutput(out io.Writer) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetOutput(out io.Writer) Logger {
 	l.out = out
+	return l
 }
 
 // SetCallDepth is useful for helper libraries that wrap this, and call their helpers. The call depth is
 // how many calls up the stack the Logger should look when deciding what file/line combo created the log
 // statement. This defaults to 0, which is accurate if you're just calling the Logger directly. For every
 // level of indirection, add 1.
-func (l *Logger) SetCallDepth(depth int) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetCallDepth(depth int) Logger {
 	l.calldepth = depth
+	return l
 }
 
 // SetSentry updates the DSN and tags that will be used to send errors to Sentry.
-func (l *Logger) SetSentry(dsn string, tags map[string]string) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetSentry(dsn string, tags map[string]string) (Logger, error) {
 	sentryClient, err := raven.NewClient(dsn, tags)
 	if err != nil {
-		return err
+		return l, err
 	}
 	if l.sentry != nil {
 		l.sentry.Close()
 	}
 	l.sentry = sentryClient
-	return nil
+	return l, nil
 }
 
 // SetPackagePrefixes sets the package prefixes that will be used to determine
 // if a package should be considered "in app" in sentry. Stacktraces will use
 // this information to flag lines of stacktraces that are from the application,
 // as opposed to being from a third party library or from the standard library.
-func (l *Logger) SetPackagePrefixes(prefixes []string) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetPackagePrefixes(prefixes []string) Logger {
 	l.packagePrefixes = prefixes
+	return l
 }
 
 // SetRelease sets the release of the application (usually a git SHA1) that
 // recorded the log. This is only used to tag the logs sent to Sentry, so we
 // know which releases produced the errors.
-func (l *Logger) SetRelease(release string) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l Logger) SetRelease(release string) Logger {
 	if l.sentry == nil {
-		return
+		return l
 	}
 	l.sentry.SetRelease(release)
+	return l
 }
 
 // Debugf writes a log entry with the Level of DebugLvl, interpolating the format
 // string with the arguments passed. See fmt.Sprintf for information on variable
 // placeholders in the format string.
 func (l Logger) Debugf(format string, msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -278,8 +264,6 @@ func (l Logger) Debugf(format string, msg ...interface{}) {
 // Debug writes a log entry with the Level of DebugLvl, joining each argument passed
 // with a space.
 func (l Logger) Debug(msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -293,8 +277,6 @@ func (l Logger) Debug(msg ...interface{}) {
 // string with the arguments passed. See fmt.Sprintf for information on variable
 // placeholders in the format string.
 func (l Logger) Infof(format string, msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -307,8 +289,6 @@ func (l Logger) Infof(format string, msg ...interface{}) {
 // Info writes a log entry with the Level of InfoLvl, joining each argument passed
 // with a space.
 func (l Logger) Info(msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -325,8 +305,6 @@ func (l Logger) Info(msg ...interface{}) {
 // Any message logged with Warnf will automatically be sent to Sentry, if Sentry
 // has been configured.
 func (l Logger) Warnf(format string, msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -343,8 +321,6 @@ func (l Logger) Warnf(format string, msg ...interface{}) {
 // Any message logged with Warn will automatically be sent to Sentry, if Sentry
 // has been configured.
 func (l Logger) Warn(msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -362,8 +338,6 @@ func (l Logger) Warn(msg ...interface{}) {
 // Any message logged with Errorf will automatically be sent to Sentry, if Sentry
 // has been configured.
 func (l Logger) Errorf(format string, msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -380,8 +354,6 @@ func (l Logger) Errorf(format string, msg ...interface{}) {
 // Any message logged with Error will automatically be sent to Sentry, if Sentry
 // has been configured.
 func (l Logger) Error(msg ...interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
 	if l.out == nil {
 		return
 	}
@@ -431,7 +403,7 @@ func itoa(buf *[]byte, i int, wid int) {
 // Prepend our log header to the buffer.
 //
 // Heavily modified form of https://github.com/golang/go/blob/883bc6ed0ea815293fe6309d66f967ea60630e87/src/log/log.go#L80
-func (l *Logger) formatHeader(buf *[]byte, now time.Time, file string, line int, level Level) {
+func formatHeader(buf *[]byte, now time.Time, file string, line int, level Level) {
 	year, month, day := now.Date()
 	itoa(buf, year, 4)
 	*buf = append(*buf, '-')
@@ -457,17 +429,15 @@ func (l *Logger) formatHeader(buf *[]byte, now time.Time, file string, line int,
 // Actually write to l.out after gathering caller information
 //
 // Heavily modified version of https://github.com/golang/go/blob/883bc6ed0ea815293fe6309d66f967ea60630e87/src/log/log.go#L130
-func (l *Logger) output(calldepth int, s string, lvl Level) error {
+func (l Logger) output(calldepth int, s string, lvl Level) error {
 	now := time.Now()
-	l.lock.Unlock() // release lock while grabbing caller info - it's expensive
 	_, file, line, ok := runtime.Caller(calldepth)
 	if !ok {
 		file = "???"
 		line = 0
 	}
-	l.lock.Lock()
 	l.buf = l.buf[:0]
-	l.formatHeader(&l.buf, now, file, line, lvl)
+	formatHeader(&l.buf, now, file, line, lvl)
 	l.buf = append(l.buf, s...)
 	if len(s) > 0 && s[len(s)-1] != '\n' {
 		l.buf = append(l.buf, '\n')
@@ -479,7 +449,7 @@ func (l *Logger) output(calldepth int, s string, lvl Level) error {
 }
 
 // Send output to Sentry
-func (l *Logger) toSentry(format string, args []interface{}, lvl Level) {
+func (l Logger) toSentry(format string, args []interface{}, lvl Level) {
 	if l.sentry == nil {
 		return
 	}
