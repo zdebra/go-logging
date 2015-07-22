@@ -156,7 +156,7 @@ func TestOutput(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
-	line := 462
+	line := 471
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
 		line = 457
@@ -204,7 +204,7 @@ func TestHelpers(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
-	line := 396
+	line := 405
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
 		line = 392
@@ -231,7 +231,7 @@ func TestHelpers(t *testing.T) {
 			t.Errorf("Unexpected level: %s\n", test.stmtLevel)
 		}
 		f("Test number", pos)
-		line = 396
+		line = 405
 		if testing.Coverage() > 0 {
 			line = 392
 		}
@@ -247,7 +247,7 @@ func TestHelpers(t *testing.T) {
 
 		buf.Reset()
 		ff("Test number %d", pos)
-		line = 403
+		line = 412
 		if testing.Coverage() > 0 {
 			line = 401
 		}
