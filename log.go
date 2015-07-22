@@ -165,6 +165,10 @@ func LogFromContext(c context.Context) Logger {
 	return logger
 }
 
+func SaveToContext(l Logger, base context.Context) context.Context {
+	return context.WithValue(base, contextKey, l)
+}
+
 func (l Logger) makeCopy() Logger {
 	newLogger := l
 	newLogger.buf = nil
