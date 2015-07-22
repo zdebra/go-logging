@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/DramaFever/raven-go"
 )
 
@@ -22,6 +24,8 @@ const (
 	WarnLvl Level = "WARN"
 	// ErrorLvl indicates non-recoverable error messages
 	ErrorLvl Level = "ERROR"
+
+	contextKey = "github.com/DramaFever/go-logging#Logger"
 )
 
 // Level is a threshold used to constrain which logs are written in which environments.
@@ -139,6 +143,26 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 		flock:  new(sync.Mutex),
 		tags:   map[string]string{},
 	}, err
+}
+
+func LogFromContext(c context.Context) Logger {
+	ctxVal := c.Value(contextKey)
+	if ctxVal == nil {
+		logger, err := New(InfoLvl, os.Stderr, "", nil)
+		if err != nil {
+			panic(err.Error())
+		}
+		return logger
+	}
+	logger, ok := ctxVal.(Logger)
+	if !ok {
+		logger, err := New(InfoLvl, os.Stderr, "", nil)
+		if err != nil {
+			panic(err.Error())
+		}
+		return logger
+	}
+	return logger
 }
 
 func (l Logger) makeCopy() Logger {
