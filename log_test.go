@@ -156,7 +156,7 @@ func TestOutput(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
-	line := 471
+	line := 537
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
 		line = 457
@@ -204,7 +204,7 @@ func TestHelpers(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
-	line := 405
+	line := 471
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
 		line = 392
@@ -231,7 +231,7 @@ func TestHelpers(t *testing.T) {
 			t.Errorf("Unexpected level: %s\n", test.stmtLevel)
 		}
 		f("Test number", pos)
-		line = 405
+		line = 471
 		if testing.Coverage() > 0 {
 			line = 392
 		}
@@ -247,7 +247,7 @@ func TestHelpers(t *testing.T) {
 
 		buf.Reset()
 		ff("Test number %d", pos)
-		line = 412
+		line = 478
 		if testing.Coverage() > 0 {
 			line = 401
 		}
@@ -259,5 +259,29 @@ func TestHelpers(t *testing.T) {
 		if buf.String() != expectation {
 			t.Errorf("Expected `%s`, got `%s` from %#+v\n", expectation, buf.String(), test)
 		}
+	}
+}
+
+func TestRotatableLoggers(t *testing.T) {
+	New(InfoLvl, os.Stdout, "sentry", nil)
+	if rotatableLoggers.Front() != nil {
+		t.Error("There should be no elements in rotatableLoggers at this point.")
+	}
+
+	l, err1 := LogToDir(InfoLvl, "./", "foo", "", nil)
+	if err1 != nil {
+		panic(err1.Error())
+	}
+	logFileName := l.logFile.Name()
+
+	if rotatableLoggers.Front() == nil {
+		t.Error("There should be an element in rotatableLoggers at this point.")
+	}
+
+	l.Close()
+	err := os.Remove(logFileName)
+
+	if err != nil {
+		t.Errorf("Error removing %s : %s", logFileName, err.Error())
 	}
 }

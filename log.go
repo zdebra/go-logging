@@ -1,13 +1,16 @@
 package logging
 
 import (
+	"container/list"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/context"
@@ -48,6 +51,13 @@ const (
 // external service, the database query ran, etc. Things that are useful when writing software, but
 // too noisy to have on in production.
 type Level string
+
+// We need a static list of rotatable loggers for when SIGUSR1 is caught
+var rotatableLoggers *list.List = list.New()
+
+func init() {
+	go catchSignal()
+}
 
 // includes returns true if l "includes" other. l includes other when a message logged at other's Level
 // should be included in a log file that requires at least l severity.
@@ -92,6 +102,9 @@ type Logger struct {
 	tags            map[string]string
 	meta            []raven.Interface
 	packagePrefixes []string
+	logFileDir      string
+	logFileBase     string
+	logFile         *os.File
 }
 
 // LogToFile creates a new Logger that writes to a file specified by path. If the file doesn't exist, it
@@ -105,7 +118,58 @@ func LogToFile(level Level, path string, sentry string, sentryTags map[string]st
 	if err != nil {
 		return Logger{}, err
 	}
-	return New(level, f, sentry, sentryTags)
+	logger, err1 := New(level, f, sentry, sentryTags)
+	return logger, err1
+}
+
+// LogToDir creates a new Logger that writes to a file in the directory Path. The file will be named
+// path/fileNameBase.YYYY.MM.DD:HH:mm:SS.log. If the file doesn't exist, it
+// will be created. If it does exist, new log lines will be appended to it.
+// Loggers will be rotatable iif they are created with this function.
+//
+// If sentry is non-empty, it will be used as a DSN to connect to a Sentry error collector. The sentryTags
+// are a key/value mapping that will be applied to your Sentry errors. You can use them to set things like
+// the version of your software running, etc.
+func LogToDir(level Level, path string, fileNameBase string, sentry string, sentryTags map[string]string) (Logger, error) {
+	fullPath := calculateFileName(path, fileNameBase)
+	f, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return Logger{}, err
+	}
+	logger, err1 := New(level, f, sentry, sentryTags)
+	logger.logFile = f
+	logger.logFileBase = fileNameBase
+	logger.logFileDir = path
+
+	rotatableLoggers.PushBack(logger)
+	return logger, err1
+}
+
+func (l Logger) RotateLogFile() {
+	if l.logFile != nil && l.logFileBase != "" && l.logFileDir != "" {
+		newPath := calculateFileName(l.logFileDir, l.logFileBase)
+		newFile, _ := os.OpenFile(newPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		oldFile := l.logFile
+		l.SetOutput(newFile)
+		oldFile.Close()
+	}
+}
+
+func catchSignal() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGUSR1)
+
+	for {
+		<-c
+		for e := rotatableLoggers.Front(); e != nil; e = e.Next() {
+			logger := e.Value.(Logger)
+			logger.RotateLogFile()
+		}
+	}
+}
+
+func calculateFileName(path string, fileNameBase string) string {
+	return fmt.Sprintf("%s/%s.%s.log", path, fileNameBase, time.Now().Format("2006.01.02:15:04:05"))
 }
 
 // LogToStdout creates a new Logger that writes to stdout.
@@ -220,7 +284,9 @@ func (l Logger) AddMeta(meta ...raven.Interface) Logger {
 // Once the Close method is called, you should not write any more logs using that Logger. Create a new one
 // instead.
 func (l Logger) Close() {
-	l.sentry.Close()
+	if l.sentry != nil {
+		l.sentry.Close()
+	}
 	if closer, ok := l.out.(io.Closer); ok {
 		closer.Close()
 	}
