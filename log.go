@@ -53,7 +53,7 @@ const (
 type Level string
 
 // We need a static list of rotatable loggers for when SIGUSR1 is caught
-var rotatableLoggers *list.List = list.New()
+var rotatableLoggers = list.New()
 
 // Start up a goroutine to catch SIGUSR1.
 func init() {
