@@ -55,6 +55,7 @@ type Level string
 // We need a static list of rotatable loggers for when SIGUSR1 is caught
 var rotatableLoggers *list.List = list.New()
 
+// Start up a goroutine to catch SIGUSR1.
 func init() {
 	go catchSignal()
 }
@@ -145,6 +146,13 @@ func LogToDir(level Level, path string, fileNameBase string, sentry string, sent
 	return logger, err1
 }
 
+// RotateLogFile creates a new logfile based on the Logger's filepath, base file name, and
+// the current date/time. This function will only work with Loggers that have been created
+// using LogToDir. This function will silently fail if the Logger was not created using
+// LogToDir, and is missing a base filename or a directory.
+//
+// When SIGUSR1 is caught, RotateLogFile will be automatically called on all Loggers created
+// using LogToDir.
 func (l *Logger) RotateLogFile() {
 	if l.logFile != nil && l.logFileBase != "" && l.logFileDir != "" {
 		newPath := calculateFileName(l.logFileDir, l.logFileBase)
@@ -155,6 +163,7 @@ func (l *Logger) RotateLogFile() {
 	}
 }
 
+// catchSignal catches SIGUSR1 and calls RotateLogFile on all eligable loggers.
 func catchSignal() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGUSR1)
@@ -168,6 +177,8 @@ func catchSignal() {
 	}
 }
 
+// calculateFileName creates a semi-unique name for a log file based on the provided path, base file name,
+// and the date/time at which this function was called (second accuracy)
 func calculateFileName(path string, fileNameBase string) string {
 	return fmt.Sprintf("%s/%s.%s.log", path, fileNameBase, time.Now().Format("2006.01.02:15:04:05"))
 }
