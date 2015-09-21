@@ -113,13 +113,13 @@ type Logger struct {
 // If sentry is non-empty, it will be used as a DSN to connect to a Sentry error collector. The sentryTags
 // are a key/value mapping that will be applied to your Sentry errors. You can use them to set things like
 // the version of your software running, etc.
-func LogToFile(level Level, path string, sentry string, sentryTags map[string]string) (Logger, error) {
+func LogToFile(level Level, path string, sentry string, sentryTags map[string]string) (*Logger, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		return Logger{}, err
+		return &Logger{}, err
 	}
-	logger, err1 := New(level, f, sentry, sentryTags)
-	return logger, err1
+	return New(level, f, sentry, sentryTags)
+
 }
 
 // LogToDir creates a new Logger that writes to a file in the directory Path. The file will be named
@@ -130,11 +130,11 @@ func LogToFile(level Level, path string, sentry string, sentryTags map[string]st
 // If sentry is non-empty, it will be used as a DSN to connect to a Sentry error collector. The sentryTags
 // are a key/value mapping that will be applied to your Sentry errors. You can use them to set things like
 // the version of your software running, etc.
-func LogToDir(level Level, path string, fileNameBase string, sentry string, sentryTags map[string]string) (Logger, error) {
+func LogToDir(level Level, path string, fileNameBase string, sentry string, sentryTags map[string]string) (*Logger, error) {
 	fullPath := calculateFileName(path, fileNameBase)
 	f, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		return Logger{}, err
+		return &Logger{}, err
 	}
 	logger, err1 := New(level, f, sentry, sentryTags)
 	logger.logFile = f
@@ -145,7 +145,7 @@ func LogToDir(level Level, path string, fileNameBase string, sentry string, sent
 	return logger, err1
 }
 
-func (l Logger) RotateLogFile() {
+func (l *Logger) RotateLogFile() {
 	if l.logFile != nil && l.logFileBase != "" && l.logFileDir != "" {
 		newPath := calculateFileName(l.logFileDir, l.logFileBase)
 		newFile, _ := os.OpenFile(newPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
@@ -162,7 +162,7 @@ func catchSignal() {
 	for {
 		<-c
 		for e := rotatableLoggers.Front(); e != nil; e = e.Next() {
-			logger := e.Value.(Logger)
+			logger := e.Value.(*Logger)
 			logger.RotateLogFile()
 		}
 	}
@@ -177,7 +177,7 @@ func calculateFileName(path string, fileNameBase string) string {
 // If sentry is non-empty, it will be used as a DSN to connect to a Sentry error collector. The sentryTags
 // are a key/value mapping that will be applied to your Sentry errors. You can use them to set things like
 // the version of your software running, etc.
-func LogToStdout(level Level, sentry string, sentryTags map[string]string) (Logger, error) {
+func LogToStdout(level Level, sentry string, sentryTags map[string]string) (*Logger, error) {
 	return New(level, os.Stdout, sentry, sentryTags)
 }
 
@@ -187,7 +187,7 @@ func LogToStdout(level Level, sentry string, sentryTags map[string]string) (Logg
 // If sentry is non-empty, it will be used as a DSN to connect to a Sentry error collector. The sentryTags
 // are a key/value mapping that will be applied to your Sentry errors. You can use them to set things like
 // the version of your software running, etc.
-func New(level Level, out io.Writer, sentry string, sentryTags map[string]string) (Logger, error) {
+func New(level Level, out io.Writer, sentry string, sentryTags map[string]string) (*Logger, error) {
 	var sentryClient *raven.Client
 	var err error
 	if sentry != "" {
@@ -200,7 +200,7 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 			sentryClient.Transport = &raven.HTTPTransport{Http: *httpClient}
 		}
 	}
-	return Logger{
+	return &Logger{
 		level:  level,
 		out:    out,
 		sentry: sentryClient,
@@ -215,7 +215,7 @@ func New(level Level, out io.Writer, sentry string, sentryTags map[string]string
 // Logger configuration errors; in production, SaveToContext should always be used before trying to retrieve
 // the Logger wtih LogFromContext. Normally, SaveToContext should be called as part of application startup
 // when the Logger is instantiated.
-func LogFromContext(c context.Context) Logger {
+func LogFromContext(c context.Context) *Logger {
 	ctxVal := c.Value(contextKey)
 	if ctxVal == nil {
 		logger, err := New(InfoLvl, os.Stderr, "", nil)
@@ -232,7 +232,7 @@ func LogFromContext(c context.Context) Logger {
 		}
 		return logger
 	}
-	return logger
+	return &logger
 }
 
 // SaveToContext adds a Logger to the supplied Context, returning the new Context that contains the Logger.
@@ -283,7 +283,7 @@ func (l Logger) AddMeta(meta ...raven.Interface) Logger {
 // Close signifies that a Logger will no longer be used, and the resources allocated to it can be freed.
 // Once the Close method is called, you should not write any more logs using that Logger. Create a new one
 // instead.
-func (l Logger) Close() {
+func (l *Logger) Close() {
 	if l.sentry != nil {
 		l.sentry.Close()
 	}
@@ -298,13 +298,13 @@ func (l Logger) GetLevel() Level {
 }
 
 // SetLevel updates the Level assigned to the Logger.
-func (l Logger) SetLevel(lvl Level) Logger {
+func (l *Logger) SetLevel(lvl Level) *Logger {
 	l.level = lvl
 	return l
 }
 
 // SetOutput redirects the logs from the Logger to a new destination.
-func (l Logger) SetOutput(out io.Writer) Logger {
+func (l *Logger) SetOutput(out io.Writer) *Logger {
 	l.out = out
 	return l
 }
@@ -313,13 +313,13 @@ func (l Logger) SetOutput(out io.Writer) Logger {
 // how many calls up the stack the Logger should look when deciding what file/line combo created the log
 // statement. This defaults to 0, which is accurate if you're just calling the Logger directly. For every
 // level of indirection, add 1.
-func (l Logger) SetCallDepth(depth int) Logger {
+func (l *Logger) SetCallDepth(depth int) *Logger {
 	l.calldepth = depth
 	return l
 }
 
 // SetSentry updates the DSN and tags that will be used to send errors to Sentry.
-func (l Logger) SetSentry(dsn string, tags map[string]string) (Logger, error) {
+func (l *Logger) SetSentry(dsn string, tags map[string]string) (*Logger, error) {
 	sentryClient, err := raven.NewClient(dsn, tags)
 	if err != nil {
 		return l, err
@@ -335,7 +335,7 @@ func (l Logger) SetSentry(dsn string, tags map[string]string) (Logger, error) {
 // if a package should be considered "in app" in sentry. Stacktraces will use
 // this information to flag lines of stacktraces that are from the application,
 // as opposed to being from a third party library or from the standard library.
-func (l Logger) SetPackagePrefixes(prefixes []string) Logger {
+func (l *Logger) SetPackagePrefixes(prefixes []string) *Logger {
 	l.packagePrefixes = prefixes
 	return l
 }
@@ -343,7 +343,7 @@ func (l Logger) SetPackagePrefixes(prefixes []string) Logger {
 // SetRelease sets the release of the application (usually a git SHA1) that
 // recorded the log. This is only used to tag the logs sent to Sentry, so we
 // know which releases produced the errors.
-func (l Logger) SetRelease(release string) Logger {
+func (l *Logger) SetRelease(release string) *Logger {
 	if l.sentry == nil {
 		return l
 	}
