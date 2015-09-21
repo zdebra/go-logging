@@ -159,7 +159,7 @@ func TestOutput(t *testing.T) {
 	line := 548
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
-		line = 457
+		line = 665
 	}
 	expected := fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s\n", year, month, day, hour, minute, second, InfoLvl, path, line, "My test output")
 	if buf.String() != expected {
@@ -207,7 +207,7 @@ func TestHelpers(t *testing.T) {
 	line := 482
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
-		line = 392
+		line = 589
 	}
 	for pos, test := range levelTests {
 		buf.Reset()
@@ -233,7 +233,7 @@ func TestHelpers(t *testing.T) {
 		f("Test number", pos)
 		line = 482
 		if testing.Coverage() > 0 {
-			line = 392
+			line = 589
 		}
 		var expectation string
 		if test.includes {
@@ -249,7 +249,7 @@ func TestHelpers(t *testing.T) {
 		ff("Test number %d", pos)
 		line = 489
 		if testing.Coverage() > 0 {
-			line = 401
+			line = 598
 		}
 		if test.includes {
 			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, path, line, "Test number", pos)
