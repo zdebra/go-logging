@@ -270,7 +270,7 @@ func TestRotatableLoggers(t *testing.T) {
 
 	l, err1 := LogToDir(InfoLvl, "./", "foo", "", nil)
 	if err1 != nil {
-		panic(err1.Error())
+		t.Errorf("Something went wrong with LogToDir. %s", err1.Error())
 	}
 	logFileName := l.logFile.Name()
 
