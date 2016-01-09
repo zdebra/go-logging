@@ -231,29 +231,30 @@ func (l Logger) GetLevel() Level {
 	return l.level
 }
 
-// SetLevel updates the Level assigned to the Logger.
-func (l Logger) SetLevel(lvl Level) Logger {
+// WithLevel returns a Logger identical to l, but with the passed Level assigned.
+func (l Logger) WithLevel(lvl Level) Logger {
 	l.level = lvl
 	return l
 }
 
-// SetOutput redirects the logs from the Logger to a new destination.
-func (l Logger) SetOutput(out io.Writer) Logger {
+// WithOutput returns a Logger identical to l, but with the log output going to `out` instead.
+func (l Logger) WithOutput(out io.Writer) Logger {
 	l.out = out
 	return l
 }
 
-// SetCallDepth is useful for helper libraries that wrap this, and call their helpers. The call depth is
+// WithCallDepth is useful for helper libraries that wrap this, and call their helpers. The call depth is
 // how many calls up the stack the Logger should look when deciding what file/line combo created the log
 // statement. This defaults to 0, which is accurate if you're just calling the Logger directly. For every
-// level of indirection, add 1.
-func (l Logger) SetCallDepth(depth int) Logger {
+// level of indirection, add 1. WithCallDepth returns a copy of l, but with the call depth set to `depth`.
+func (l Logger) WithCallDepth(depth int) Logger {
 	l.calldepth = depth
 	return l
 }
 
-// SetSentry updates the DSN and tags that will be used to send errors to Sentry.
-func (l Logger) SetSentry(dsn string, tags map[string]string) (Logger, error) {
+// WithSentry returns a copy of l, but with the DSN and tags that will be used to send errors to Sentry
+// overwritten by dsn and tags.
+func (l Logger) WithSentry(dsn string, tags map[string]string) (Logger, error) {
 	sentryClient, err := raven.NewClient(dsn, tags)
 	if err != nil {
 		return l, err
@@ -265,19 +266,19 @@ func (l Logger) SetSentry(dsn string, tags map[string]string) (Logger, error) {
 	return l, nil
 }
 
-// SetPackagePrefixes sets the package prefixes that will be used to determine
-// if a package should be considered "in app" in sentry. Stacktraces will use
+// WithPackagePrefixes returns a copy of l with the package prefixes that will be used to determine
+// if a package should be considered "in app" in sentry overridden with `prefixes`. Stacktraces will use
 // this information to flag lines of stacktraces that are from the application,
 // as opposed to being from a third party library or from the standard library.
-func (l Logger) SetPackagePrefixes(prefixes []string) Logger {
+func (l Logger) WithPackagePrefixes(prefixes []string) Logger {
 	l.packagePrefixes = prefixes
 	return l
 }
 
-// SetRelease sets the release of the application (usually a git SHA1) that
+// WithRelease sets the release of the application (usually a git SHA1) that
 // recorded the log. This is only used to tag the logs sent to Sentry, so we
 // know which releases produced the errors.
-func (l Logger) SetRelease(release string) Logger {
+func (l Logger) WithRelease(release string) Logger {
 	if l.sentry == nil {
 		return l
 	}

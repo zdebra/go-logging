@@ -156,10 +156,10 @@ func TestOutput(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
-	line := 471
+	line := 472
 	if testing.Coverage() > 0 {
 		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
-		line = 457
+		line = 577
 	}
 	expected := fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s\n", year, month, day, hour, minute, second, InfoLvl, path, line, "My test output")
 	if buf.String() != expected {
@@ -180,7 +180,7 @@ func TestHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
 	}
-	log = log.SetCallDepth(-2)
+	log = log.WithCallDepth(-2)
 
 	levelTests := []levelTest{
 		{logLevel: DebugLvl, stmtLevel: DebugLvl, includes: true},
@@ -211,7 +211,7 @@ func TestHelpers(t *testing.T) {
 	}
 	for pos, test := range levelTests {
 		buf.Reset()
-		log = log.SetLevel(test.logLevel)
+		log = log.WithLevel(test.logLevel)
 		var f func(...interface{})
 		var ff func(string, ...interface{})
 		switch test.stmtLevel {
@@ -231,9 +231,9 @@ func TestHelpers(t *testing.T) {
 			t.Errorf("Unexpected level: %s\n", test.stmtLevel)
 		}
 		f("Test number", pos)
-		line = 405
+		line = 406
 		if testing.Coverage() > 0 {
-			line = 392
+			line = 501
 		}
 		var expectation string
 		if test.includes {
@@ -247,9 +247,9 @@ func TestHelpers(t *testing.T) {
 
 		buf.Reset()
 		ff("Test number %d", pos)
-		line = 412
+		line = 413
 		if testing.Coverage() > 0 {
-			line = 401
+			line = 510
 		}
 		if test.includes {
 			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, path, line, "Test number", pos)
