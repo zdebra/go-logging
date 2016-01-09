@@ -4,12 +4,35 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DramaFever/raven-go"
 )
+
+func getFilePath() string {
+	var name []string
+	_, filename, _, _ := runtime.Caller(1)
+	filename = path.Dir(filename)
+	if testing.Coverage() > 0 {
+		gopath := strings.Split(os.Getenv("GOPATH"), ":")
+		for _, p := range gopath {
+			newFilename := strings.TrimPrefix(filename, path.Join(p, "src")+"/")
+			if newFilename != filename {
+				filename = newFilename
+				break
+			}
+		}
+		name = append(name, filename, "_test", "_obj_test")
+	} else {
+		name = append(name, filename)
+	}
+	name = append(name, "log.go")
+	return path.Join(name...)
+}
 
 func TestLevelIncludes(t *testing.T) {
 	type levelTest struct {
@@ -155,13 +178,12 @@ func TestOutput(t *testing.T) {
 	}
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
-	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
+	file := getFilePath()
 	line := 472
 	if testing.Coverage() > 0 {
-		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
 		line = 577
 	}
-	expected := fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s\n", year, month, day, hour, minute, second, InfoLvl, path, line, "My test output")
+	expected := fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s\n", year, month, day, hour, minute, second, InfoLvl, file, line, "My test output")
 	if buf.String() != expected {
 		t.Errorf("Expected output to be '%s', got '%s' instead\n", expected, buf.String())
 	}
@@ -203,11 +225,10 @@ func TestHelpers(t *testing.T) {
 
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
-	path := strings.TrimRight(os.Getenv("GOPATH"), "/") + "/src/github.com/DramaFever/go-logging/log.go"
+	file := getFilePath()
 	line := 405
 	if testing.Coverage() > 0 {
-		path = "github.com/DramaFever/go-logging/_test/_obj_test/log.go"
-		line = 392
+		line = 500
 	}
 	for pos, test := range levelTests {
 		buf.Reset()
@@ -237,7 +258,7 @@ func TestHelpers(t *testing.T) {
 		}
 		var expectation string
 		if test.includes {
-			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, path, line, "Test number", pos)
+			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, file, line, "Test number", pos)
 		} else {
 			expectation = ""
 		}
@@ -252,7 +273,7 @@ func TestHelpers(t *testing.T) {
 			line = 510
 		}
 		if test.includes {
-			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, path, line, "Test number", pos)
+			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, file, line, "Test number", pos)
 		} else {
 			expectation = ""
 		}
