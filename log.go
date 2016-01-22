@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/DramaFever/raven-go"
+	"github.com/getsentry/raven-go"
 )
 
 const (
