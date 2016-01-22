@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DramaFever/raven-go"
+	"github.com/getsentry/raven-go"
 )
 
 func getFilePath() string {
