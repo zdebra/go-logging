@@ -179,9 +179,9 @@ func TestOutput(t *testing.T) {
 	year, month, day := time.Now().Date()
 	hour, minute, second := time.Now().Clock()
 	file := getFilePath()
-	line := 472
+	line := 437
 	if testing.Coverage() > 0 {
-		line = 577
+		line = 532
 	}
 	expected := fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s\n", year, month, day, hour, minute, second, InfoLvl, file, line, "My test output")
 	if buf.String() != expected {
@@ -252,9 +252,9 @@ func TestHelpers(t *testing.T) {
 			t.Errorf("Unexpected level: %s\n", test.stmtLevel)
 		}
 		f("Test number", pos)
-		line = 406
+		line = 371
 		if testing.Coverage() > 0 {
-			line = 501
+			line = 456
 		}
 		var expectation string
 		if test.includes {
@@ -268,9 +268,9 @@ func TestHelpers(t *testing.T) {
 
 		buf.Reset()
 		ff("Test number %d", pos)
-		line = 413
+		line = 378
 		if testing.Coverage() > 0 {
-			line = 510
+			line = 465
 		}
 		if test.includes {
 			expectation = fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d [%s] %s:%d: %s %d\n", year, month, day, hour, minute, second, test.stmtLevel, file, line, "Test number", pos)
